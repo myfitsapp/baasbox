@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.commons.io.output.ByteArrayOutputStream;
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.tika.metadata.Metadata;
@@ -37,7 +38,9 @@ import org.apache.tika.parser.Parser;
 import org.apache.tika.sax.BodyContentHandler;
 import org.json.simple.JSONObject;
 
+import com.baasbox.BBConfiguration;
 import com.baasbox.service.logging.BaasBoxLogger;
+
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Http.Context;
@@ -195,23 +198,30 @@ public class File extends Controller {
 			        Metadata metadata = new Metadata();
 			        metadata.set(Metadata.RESOURCE_NAME_KEY, fileName);
 			        Parser parser = new AutoDetectParser();
-			        parser.parse(is, contenthandler, metadata,new ParseContext());			        
+			        try{
+			        	parser.parse(is, contenthandler, metadata,new ParseContext());
+			        }catch (Exception e){
+			        	BaasBoxLogger.warn("Could not parse the file " + fileName,e);
+			        	metadata.add("_bb_parser_error", e.getMessage());
+			        	metadata.add("_bb_parser_exception", ExceptionUtils.getFullStackTrace(e));
+			        	metadata.add("_bb_parser_version", BBConfiguration.getApiVersion());
+			        }
 			        String contentType =  metadata.get(Metadata.CONTENT_TYPE);
 			       	if (StringUtils.isEmpty(contentType)) contentType="application/octet-stream";
 			       	
 			        HashMap<String,Object> extractedMetaData = new HashMap<String,Object>();
 			        for (String key:metadata.names()){
 			        	try{
-			        	if (metadata.isMultiValued(key)){
-			        		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug(key + ": ");
-			        		for (String value: metadata.getValues(key)){
-			        			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("   " + value);
-			        		}
-			        		extractedMetaData.put(key.replace(":", "_").replace(" ", "_").trim(), Arrays.asList(metadata.getValues(key)));
-			        	}else{
-			        		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug(key + ": " + metadata.get(key));
-			        		extractedMetaData.put(key.replace(":", "_").replace(" ", "_").trim(), metadata.get(key));
-			        	}
+				        	if (metadata.isMultiValued(key)){
+				        		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug(key + ": ");
+				        		for (String value: metadata.getValues(key)){
+				        			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("   " + value);
+				        		}
+				        		extractedMetaData.put(key.replace(":", "_").replace(" ", "_").trim(), Arrays.asList(metadata.getValues(key)));
+				        	}else{
+				        		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug(key + ": " + metadata.get(key));
+				        		extractedMetaData.put(key.replace(":", "_").replace(" ", "_").trim(), metadata.get(key));
+				        	}
 			        	}catch(Throwable e){
 			        		BaasBoxLogger.warn("Unable to extract metadata for file " + fileName + ", key " + key);
 			        	}
